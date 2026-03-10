@@ -1,0 +1,72 @@
+import pandas as pd
+df = pd.read_csv('/kaggle/input/scopus-export-ethics-22-25/scopus_export_Jan 31-2026_2b2816da-4c26-4cc5-a6d6-838b3bb6153f.csv')
+
+keywords_series = df["Index Keywords"].dropna().astype(str)
+
+texts = [kw_list.split(";") for kw_list in keywords_series] # split keywords by semicolon
+texts = [
+    [kw.strip().lower() for kw in kws if kw.strip()]
+    for kws in texts
+] # strip whitespace and lowercase
+
+#ready
+from gensim import corpora
+from gensim.models import LdaModel
+
+dictionary = corpora.Dictionary(texts)
+
+# optional: filter extremes gently
+dictionary.filter_extremes(no_below=5, no_above=0.6)
+
+corpus = [dictionary.doc2bow(text) for text in texts]
+
+lda = LdaModel(
+    corpus=corpus,
+    id2word=dictionary,
+    num_topics=6,
+    random_state=42,
+    passes=20,
+    alpha="auto",
+    per_word_topics=True
+)
+
+print(lda)
+
+for idx, topic in lda.print_topics(num_words=10):
+    print(f"Topic {idx+1}: {topic}\n")
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+
+for i in range(6):  # number of topics
+    plt.figure(figsize=(8,4))
+    words = dict(lda.show_topic(i, 20))  # top 20 words
+    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(words)
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis('off')
+    plt.title(f"Topic {i}")
+    plt.show()
+
+import warnings
+warnings.filterwarnings("ignore")
+
+import pyLDAvis.gensim_models
+import pyLDAvis
+
+pyLDAvis.enable_notebook()
+
+# Set width and height
+vis = pyLDAvis.gensim_models.prepare(
+    lda, 
+    corpus, 
+    dictionary, 
+    sort_topics=False,   # optional: keeps topic order
+    mds='pcoa',          # layout method
+    R=15                 # number of terms to display per topic
+)
+
+# Customize size
+vis.width = "80%"   # fill notebook cell width
+vis.height = "1000px" # tall enough to see details
+
+vis
