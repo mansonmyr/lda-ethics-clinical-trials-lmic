@@ -1,0 +1,93 @@
+abstracts = df["Abstract"].dropna().astype(str)
+print(abstracts)
+
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import re
+
+nltk.download('stopwords')
+nltk.download('wordnet')
+
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
+
+def preprocess(text):
+    # lowercase
+    text = text.lower()
+    # remove punctuation and numbers
+    text = re.sub(r'[^a-z\s]', '', text)
+    # tokenize
+    tokens = text.split()
+    # remove stopwords and short tokens
+    tokens = [lemmatizer.lemmatize(t) for t in tokens if t not in stop_words and len(t) > 2]
+    return tokens
+
+texts = [preprocess(doc) for doc in abstracts]
+print('Complete')
+
+from gensim import corpora
+
+dictionary = corpora.Dictionary(texts)
+
+# Filter extremes: remove very rare or very common words
+dictionary.filter_extremes(no_below=5, no_above=0.5)
+
+corpus = [dictionary.doc2bow(text) for text in texts]
+print('Complete')
+
+from gensim.models import LdaModel
+
+num_topics = 6  # or choose based on coherence
+lda2 = LdaModel(
+    corpus=corpus,
+    id2word=dictionary,
+    num_topics=num_topics,
+    random_state=42,
+    passes=20,
+    alpha='auto',
+    per_word_topics=True
+)
+print('Complete')
+
+from gensim.models import CoherenceModel
+
+coherence_model = CoherenceModel(model=lda2, texts=texts, dictionary=dictionary, coherence='c_v')
+print(f"Coherence Score: {coherence_model.get_coherence():.3f}")
+
+for idx, topic in lda2.print_topics(num_words=10):
+    print(f"Topic {idx+1}: {topic}\n")
+
+topic_assignments = []
+for doc in corpus:
+    topic_probs = lda2.get_document_topics(doc)
+    dominant_topic = max(topic_probs, key=lambda x: x[1])[0]
+    topic_assignments.append(dominant_topic)
+
+df['Dominant_Topic_Abstract'] = topic_assignments
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+
+for i in range(num_topics):
+    plt.figure(figsize=(8,4))
+    words = dict(lda2.show_topic(i, 20))
+    wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(words)
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis('off')
+    plt.title(f"Topic {i}")
+    plt.show()
+
+import pyLDAvis.gensim_models
+from IPython.core.display import display, HTML
+import pyLDAvis
+pyLDAvis.enable_notebook()
+vis = pyLDAvis.gensim_models.prepare(lda2, corpus, dictionary)
+
+from IPython.display import IFrame
+pyLDAvis.save_html(vis, "lda2_vis.html")
+IFrame("lda2_vis.html", width=1800, height=900)
+
+import pyLDAvis.gensim_models
+import pyLDAvis
+pyLDAvis.save_html(vis, "/kaggle/working/lda2_visualization.html")
